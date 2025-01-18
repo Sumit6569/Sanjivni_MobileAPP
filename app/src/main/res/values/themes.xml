@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.BlogApp" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <!-- Primary brand color. -->
+        <item name="colorPrimary">@color/accent_mint</item>
+        <item name="colorPrimaryVariant">@color/dark_background</item>
+        <item name="colorOnPrimary">@color/white</item>
+        <!-- Secondary brand color. -->
+        <item name="colorSecondary">@color/accent_mint</item>
+        <item name="colorSecondaryVariant">@color/accent_mint</item>
+        <item name="colorOnSecondary">@color/black</item>
+        <!-- Status bar color. -->
+        <item name="android:statusBarColor">@color/dark_background</item>
+        <!-- Background colors -->
+        <item name="android:colorBackground">@color/dark_background</item>
+        <item name="colorSurface">@color/dark_surface</item>
+        <!-- Text colors -->
+        <item name="android:textColorPrimary">@color/accent_mint</item>
+        <item name="android:textColorSecondary">@color/gray_300</item>
+        <!-- Custom attributes -->
+        <item name="android:windowBackground">@color/dark_background</item>
+    </style>
+</resources>

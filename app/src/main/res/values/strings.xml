@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Blog App</string>
+    <string name="navigation_drawer_open">Open navigation drawer</string>
+    <string name="navigation_drawer_close">Close navigation drawer</string>
+    
+    <!-- Image Content Descriptions -->
+    <string name="blog_image">Blog post image</string>
+    <string name="carousel_image">Carousel image</string>
+    
+    <!-- Menu Items -->
+    <string name="share_location">Share Location</string>
+    <string name="settings">Settings</string>
+    <string name="profile">Profile</string>
+    <string name="logout">Logout</string>
+    
+    <!-- Button Labels -->
+    <string name="add_photo">Add Photo</string>
+    <string name="take_photo">Take Photo</string>
+    <string name="choose_gallery">Choose from Gallery</string>
+    <string name="post_blog">Post Blog</string>
+    
+    <!-- Input Hints -->
+    <string name="hint_title">Title</string>
+    <string name="hint_content">Write your blog content here…</string>
+    <string name="hint_location">Location</string>
+    
+    <!-- Messages -->
+    <string name="error_title_required">Title is required</string>
+    <string name="error_content_required">Content is required</string>
+    <string name="error_image_required">Please select an image</string>
+    <string name="success_post_created">Post created successfully!</string>
+    
+    <!-- Dialog Titles -->
+    <string name="dialog_select_image">Select Image</string>
+    <string name="dialog_loading">Loading…</string>
+</resources>
