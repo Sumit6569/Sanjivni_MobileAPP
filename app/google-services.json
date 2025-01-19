@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "12720675257",
+    "project_id": "sanjivni-34359",
+    "storage_bucket": "sanjivni-34359.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:12720675257:android:6e652427ed8067829bbe68",
+        "android_client_info": {
+          "package_name": "com.example.blogapp"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "12720675257-bp00f0bf73lqid2qqvb4ta2va8bi04cd.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDjyq1ZzKWBVGSGA5OA7ZbhP-RAEFcIL5c"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "12720675257-bp00f0bf73lqid2qqvb4ta2va8bi04cd.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
