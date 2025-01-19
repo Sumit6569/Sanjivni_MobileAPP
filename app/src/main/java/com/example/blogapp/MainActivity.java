@@ -14,6 +14,8 @@ import androidx.recyclerview.widget.LinearLayoutManager;
 import com.example.blogapp.databinding.ActivityMainBinding;
 import com.google.android.material.navigation.NavigationView;
 import com.google.android.material.tabs.TabLayoutMediator;
+import com.google.firebase.auth.FirebaseAuth;
+import com.google.firebase.auth.FirebaseUser;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -27,6 +29,7 @@ public class MainActivity extends AppCompatActivity
     private List<BlogPost> blogPosts;
     private ImageCarouselAdapter carouselAdapter;
     private List<Integer> carouselImages;
+    private FirebaseAuth auth;
 
     private final ActivityResultLauncher<Intent> createBlogLauncher = registerForActivityResult(
             new ActivityResultContracts.StartActivityForResult(),
@@ -54,11 +57,24 @@ public class MainActivity extends AppCompatActivity
         binding = ActivityMainBinding.inflate(getLayoutInflater());
         setContentView(binding.getRoot());
 
+        // Initialize Firebase Auth
+        auth = FirebaseAuth.getInstance();
+        
+        // Check if user is logged in
+        FirebaseUser currentUser = auth.getCurrentUser();
+        if (currentUser == null) {
+            // Redirect to RegisterActivity instead of LoginActivity
+            startActivity(new Intent(this, RegisterActivity.class));
+            finish();
+            return;
+        }
+
         setupToolbar();
         setupDrawer();
         setupCarousel();
         setupRecyclerView();
         setupFab();
+        loadBlogPosts();
     }
 
     private void setupCarousel() {
@@ -103,9 +119,6 @@ public class MainActivity extends AppCompatActivity
         blogAdapter = new BlogAdapter(blogPosts, this);
         binding.recyclerView.setLayoutManager(new LinearLayoutManager(this));
         binding.recyclerView.setAdapter(blogAdapter);
-        
-        // Load initial blog posts
-        loadBlogPosts();
     }
 
     private void setupFab() {
@@ -153,6 +166,11 @@ public class MainActivity extends AppCompatActivity
             Toast.makeText(this, "Volunteer and Donate clicked", Toast.LENGTH_SHORT).show();
         } else if (id == R.id.nav_settings) {
             Toast.makeText(this, "Settings clicked", Toast.LENGTH_SHORT).show();
+        } else if (id == R.id.nav_logout) {
+            // Sign out from Firebase
+            auth.signOut();
+            startActivity(new Intent(this, LoginActivity.class));
+            finish();
         }
 
         binding.drawerLayout.closeDrawer(GravityCompat.START);
