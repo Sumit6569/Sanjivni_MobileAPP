@@ -1,5 +1,7 @@
 package com.example.blogapp.models;
 
+import com.google.firebase.Timestamp;
+
 public class Post {
     private String postId;
     private String title;
@@ -7,10 +9,10 @@ public class Post {
     private String imageUrl;
     private String authorId;
     private String authorName;
-    private long timestamp;
+    private Timestamp timestamp;
     private int likes;
 
-    // Empty constructor needed for Firebase
+    // Empty constructor needed for Firestore
     public Post() {
     }
 
@@ -20,7 +22,7 @@ public class Post {
         this.imageUrl = imageUrl;
         this.authorId = authorId;
         this.authorName = authorName;
-        this.timestamp = System.currentTimeMillis();
+        this.timestamp = Timestamp.now();
         this.likes = 0;
     }
 
@@ -73,11 +75,11 @@ public class Post {
         this.authorName = authorName;
     }
 
-    public long getTimestamp() {
+    public Timestamp getTimestamp() {
         return timestamp;
     }
 
-    public void setTimestamp(long timestamp) {
+    public void setTimestamp(Timestamp timestamp) {
         this.timestamp = timestamp;
     }
 

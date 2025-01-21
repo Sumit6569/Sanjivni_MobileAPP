@@ -3,51 +3,59 @@ package com.example.blogapp;
 import android.content.Intent;
 import android.os.Bundle;
 import android.os.Handler;
+import android.util.Log;
 import android.view.MenuItem;
+import android.view.View;
 import android.widget.Toast;
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
+import androidx.annotation.NonNull;
 import androidx.appcompat.app.ActionBarDrawerToggle;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.view.GravityCompat;
 import androidx.recyclerview.widget.LinearLayoutManager;
+import androidx.recyclerview.widget.RecyclerView;
+import com.example.blogapp.adapters.PostAdapter;
+import com.example.blogapp.adapters.BlogAdapter;
+import com.example.blogapp.adapters.ImageCarouselAdapter;
 import com.example.blogapp.databinding.ActivityMainBinding;
+import com.example.blogapp.models.BlogPost;
+import com.example.blogapp.models.Post;
 import com.google.android.material.navigation.NavigationView;
 import com.google.android.material.tabs.TabLayoutMediator;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseUser;
+import com.google.firebase.database.DataSnapshot;
+import com.google.firebase.database.DatabaseError;
+import com.google.firebase.database.DatabaseReference;
+import com.google.firebase.database.FirebaseDatabase;
+import com.google.firebase.database.ValueEventListener;
+import com.google.firebase.firestore.FirebaseFirestore;
+import com.google.firebase.firestore.QueryDocumentSnapshot;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 public class MainActivity extends AppCompatActivity 
-        implements NavigationView.OnNavigationItemSelectedListener, 
-                   BlogAdapter.OnBlogClickListener {
+        implements NavigationView.OnNavigationItemSelectedListener, PostAdapter.OnPostClickListener {
                    
     private ActivityMainBinding binding;
     private ActionBarDrawerToggle toggle;
+    private List<Post> postList;
+    private PostAdapter postAdapter;
+    private FirebaseAuth auth;
+    private FirebaseFirestore db;
+    private RecyclerView recyclerView;
     private BlogAdapter blogAdapter;
     private List<BlogPost> blogPosts;
-    private ImageCarouselAdapter carouselAdapter;
-    private List<Integer> carouselImages;
-    private FirebaseAuth auth;
+    private DatabaseReference databaseReference;
 
-    private final ActivityResultLauncher<Intent> createBlogLauncher = registerForActivityResult(
+    private final ActivityResultLauncher<Intent> createPostLauncher = registerForActivityResult(
             new ActivityResultContracts.StartActivityForResult(),
             result -> {
-                if (result.getResultCode() == RESULT_OK && result.getData() != null) {
-                    // Get blog post data from the result
-                    Intent data = result.getData();
-                    String title = data.getStringExtra("title");
-                    String content = data.getStringExtra("content");
-                    String imageUrl = data.getStringExtra("imageUrl");
-                    String location = data.getStringExtra("location");
-                    long timestamp = data.getLongExtra("timestamp", System.currentTimeMillis());
-
-                    // Create new blog post and add it to the list
-                    BlogPost newPost = new BlogPost(title, content, imageUrl, location);
-                    blogPosts.add(0, newPost); // Add at the beginning of the list
-                    blogAdapter.notifyItemInserted(0);
-                    binding.recyclerView.smoothScrollToPosition(0);
+                if (result.getResultCode() == RESULT_OK) {
+                    Toast.makeText(this, "Post created successfully!", Toast.LENGTH_SHORT).show();
                 }
             });
 
@@ -57,34 +65,67 @@ public class MainActivity extends AppCompatActivity
         binding = ActivityMainBinding.inflate(getLayoutInflater());
         setContentView(binding.getRoot());
 
-        // Initialize Firebase Auth
-        auth = FirebaseAuth.getInstance();
-        
-        // Check if user is logged in
-        FirebaseUser currentUser = auth.getCurrentUser();
-        if (currentUser == null) {
-            // Redirect to RegisterActivity instead of LoginActivity
-            startActivity(new Intent(this, RegisterActivity.class));
-            finish();
-            return;
-        }
+        try {
+            // Initialize Firebase Auth
+            auth = FirebaseAuth.getInstance();
+            
+            // Initialize Firebase Database
+            FirebaseDatabase database = FirebaseDatabase.getInstance();
+            databaseReference = database.getReference("posts");
+            
+            // Initialize RecyclerView
+            blogPosts = new ArrayList<>();
+            blogAdapter = new BlogAdapter(blogPosts);
+            binding.recyclerView.setLayoutManager(new LinearLayoutManager(this));
+            binding.recyclerView.setAdapter(blogAdapter);
 
-        setupToolbar();
-        setupDrawer();
-        setupCarousel();
-        setupRecyclerView();
-        setupFab();
-        loadBlogPosts();
+            // Setup Navigation Drawer
+            setSupportActionBar(binding.toolbar);
+            toggle = new ActionBarDrawerToggle(
+                this, 
+                binding.drawerLayout,
+                binding.toolbar,
+                R.string.navigation_drawer_open,
+                R.string.navigation_drawer_close
+            );
+            binding.drawerLayout.addDrawerListener(toggle);
+            toggle.syncState();
+            binding.navigationView.setNavigationItemSelectedListener(this);
+
+            // Setup FAB
+            binding.fabAddPost.setOnClickListener(v -> {
+                Intent intent = new Intent(this, CreateBlogActivity.class);
+                startActivity(intent);
+            });
+
+            // Check if user is logged in
+            FirebaseUser currentUser = auth.getCurrentUser();
+            if (currentUser == null) {
+                startActivity(new Intent(this, LoginActivity.class));
+                finish();
+                return;
+            }
+
+            // Load posts
+            loadBlogPosts();
+            
+            // Setup carousel
+            setupCarousel();
+            
+        } catch (Exception e) {
+            Log.e("BlogApp", "Error in onCreate: " + e.getMessage());
+            Toast.makeText(this, "Error initializing app: " + e.getMessage(), Toast.LENGTH_LONG).show();
+        }
     }
 
     private void setupCarousel() {
-        carouselImages = new ArrayList<>();
-        // Add carousel images (JPG files)
+        List<Integer> carouselImages = new ArrayList<>();
+        // Add carousel images
         carouselImages.add(R.drawable.carousel_image1);
         carouselImages.add(R.drawable.carousel_image2);
         carouselImages.add(R.drawable.carousel_image3);
 
-        carouselAdapter = new ImageCarouselAdapter(carouselImages);
+        ImageCarouselAdapter carouselAdapter = new ImageCarouselAdapter(carouselImages);
         binding.imageCarousel.setAdapter(carouselAdapter);
         
         // Auto-scroll functionality
@@ -100,44 +141,91 @@ public class MainActivity extends AppCompatActivity
         handler.postDelayed(runnable, 3000);
     }
 
-    private void setupToolbar() {
-        setSupportActionBar(binding.toolbar);
-    }
-
-    private void setupDrawer() {
-        toggle = new ActionBarDrawerToggle(
-                this, binding.drawerLayout, binding.toolbar,
-                R.string.navigation_drawer_open, R.string.navigation_drawer_close);
-        binding.drawerLayout.addDrawerListener(toggle);
-        toggle.syncState();
-
-        binding.navigationView.setNavigationItemSelectedListener(this);
-    }
-
-    private void setupRecyclerView() {
-        blogPosts = new ArrayList<>();
-        blogAdapter = new BlogAdapter(blogPosts, this);
-        binding.recyclerView.setLayoutManager(new LinearLayoutManager(this));
-        binding.recyclerView.setAdapter(blogAdapter);
-    }
-
-    private void setupFab() {
-        binding.fabAddPost.setOnClickListener(view -> {
-            Intent intent = new Intent(this, CreateBlogActivity.class);
-            createBlogLauncher.launch(intent);
-        });
-    }
-
     private void loadBlogPosts() {
-        // For now, we'll just keep the posts in memory
-        // You might want to implement persistent storage later
-        if (blogPosts.isEmpty()) {
-            // Only add sample posts if the list is empty
-            blogPosts.add(new BlogPost("Welcome to BlogApp", 
-                "Start creating your own blog posts by clicking the + button!", 
-                "", ""));
-            blogAdapter.notifyDataSetChanged();
+        try {
+            Log.d("BlogApp", "Starting to load blog posts");
+            
+            if (databaseReference == null) {
+                Log.e("BlogApp", "Database reference is null!");
+                return;
+            }
+
+            // Show loading state
+            binding.recyclerView.setVisibility(View.GONE);
+            
+            databaseReference.addValueEventListener(new ValueEventListener() {
+                @Override
+                public void onDataChange(@NonNull DataSnapshot dataSnapshot) {
+                    try {
+                        Log.d("BlogApp", "Received data snapshot with " + dataSnapshot.getChildrenCount() + " posts");
+                        
+                        // Clear existing posts
+                        blogPosts.clear();
+                        
+                        // Iterate through all posts
+                        for (DataSnapshot postSnapshot : dataSnapshot.getChildren()) {
+                            try {
+                                // Log raw data for debugging
+                                Log.d("BlogApp", "Post raw data: " + postSnapshot.getValue());
+                                
+                                BlogPost post = new BlogPost();
+                                
+                                // Manually get values to handle potential type mismatches
+                                Object titleObj = postSnapshot.child("title").getValue();
+                                Object contentObj = postSnapshot.child("content").getValue();
+                                Object imageUrlObj = postSnapshot.child("imageUrl").getValue();
+                                Object locationNameObj = postSnapshot.child("locationName").getValue();
+                                Object userIdObj = postSnapshot.child("userId").getValue();
+                                Object timestampObj = postSnapshot.child("timestamp").getValue();
+                                
+                                post.setTitle(titleObj != null ? titleObj.toString() : "");
+                                post.setContent(contentObj != null ? contentObj.toString() : "");
+                                post.setImageUrl(imageUrlObj != null ? imageUrlObj.toString() : "");
+                                post.setLocationName(locationNameObj != null ? locationNameObj.toString() : "");
+                                post.setUserId(userIdObj != null ? userIdObj.toString() : "");
+                                post.setTimestamp(timestampObj != null ? Long.parseLong(timestampObj.toString()) : System.currentTimeMillis());
+                                
+                                blogPosts.add(post);
+                                Log.d("BlogApp", "Added post: " + post.getTitle());
+                            } catch (Exception e) {
+                                Log.e("BlogApp", "Error parsing post: " + e.getMessage());
+                            }
+                        }
+                        
+                        // Sort posts by timestamp (newest first)
+                        blogPosts.sort((p1, p2) -> Long.compare(p2.getTimestamp(), p1.getTimestamp()));
+                        
+                        // Update UI
+                        binding.recyclerView.setVisibility(View.VISIBLE);
+                        blogAdapter.notifyDataSetChanged();
+                        
+                        // Log result
+                        Log.d("BlogApp", "Loaded " + blogPosts.size() + " posts");
+                        
+                    } catch (Exception e) {
+                        Log.e("BlogApp", "Error in onDataChange: " + e.getMessage());
+                        Toast.makeText(MainActivity.this, "Error loading posts", Toast.LENGTH_SHORT).show();
+                    }
+                }
+
+                @Override
+                public void onCancelled(@NonNull DatabaseError databaseError) {
+                    Log.e("BlogApp", "Database error: " + databaseError.getMessage());
+                    Toast.makeText(MainActivity.this, "Failed to load posts", Toast.LENGTH_SHORT).show();
+                    binding.recyclerView.setVisibility(View.VISIBLE);
+                }
+            });
+            
+        } catch (Exception e) {
+            Log.e("BlogApp", "Error in loadBlogPosts: " + e.getMessage());
+            Toast.makeText(this, "Error loading posts", Toast.LENGTH_SHORT).show();
+            binding.recyclerView.setVisibility(View.VISIBLE);
         }
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
     }
 
     @Override
@@ -178,9 +266,10 @@ public class MainActivity extends AppCompatActivity
     }
 
     @Override
-    public void onBlogClick(BlogPost post, int position) {
-        // Handle blog post click
-        // You can open a detail view activity here
-        Toast.makeText(this, "Clicked: " + post.getTitle(), Toast.LENGTH_SHORT).show();
+    public void onPostClick(Post post) {
+        // Handle post click
+        Intent intent = new Intent(this, ViewPostActivity.class);
+        intent.putExtra("postId", post.getPostId());
+        startActivity(intent);
     }
 }

@@ -2,8 +2,17 @@
 <paths>
     <external-files-path
         name="my_images"
+        path="Pictures" />
+    <external-path
+        name="external"
+        path="." />
+    <external-files-path
+        name="external_files"
         path="." />
     <cache-path
         name="my_cache_images"
+        path="." />
+    <files-path
+        name="my_internal_images"
         path="." />
 </paths>

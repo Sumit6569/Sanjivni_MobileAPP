@@ -4,12 +4,15 @@ import android.Manifest;
 import android.app.Activity;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.location.Address;
 import android.location.Geocoder;
 import android.location.Location;
 import android.net.Uri;
 import android.os.Bundle;
 import android.provider.MediaStore;
+import android.util.Base64;
 import android.util.Log;
 import android.view.View;
 import android.widget.Toast;
@@ -21,11 +24,18 @@ import androidx.core.content.ContextCompat;
 import androidx.core.content.FileProvider;
 import com.bumptech.glide.Glide;
 import com.example.blogapp.databinding.ActivityCreateBlogBinding;
+import com.example.blogapp.models.BlogPost;
 import com.google.android.gms.location.FusedLocationProviderClient;
 import com.google.android.gms.location.LocationServices;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
+import com.google.firebase.auth.FirebaseAuth;
+import com.google.firebase.database.DatabaseReference;
+import com.google.firebase.database.FirebaseDatabase;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.List;
@@ -59,8 +69,19 @@ public class CreateBlogActivity extends AppCompatActivity {
                 if (result.getResultCode() == RESULT_OK) {
                     Log.d(TAG, "Camera result received");
                     if (currentPhotoPath != null) {
-                        selectedImageUri = Uri.fromFile(new File(currentPhotoPath));
-                        loadImage();
+                        try {
+                            // Create URI using FileProvider
+                            File photoFile = new File(currentPhotoPath);
+                            selectedImageUri = FileProvider.getUriForFile(this,
+                                getApplicationContext().getPackageName() + ".fileprovider",
+                                photoFile);
+                            
+                            Log.d(TAG, "Camera photo URI: " + selectedImageUri);
+                            loadImage();
+                        } catch (Exception e) {
+                            Log.e(TAG, "Error handling camera result: " + e.getMessage());
+                            Toast.makeText(this, "Error handling camera photo", Toast.LENGTH_SHORT).show();
+                        }
                     }
                 }
             });
@@ -142,7 +163,7 @@ public class CreateBlogActivity extends AppCompatActivity {
 
         if (photoFile != null) {
             Uri photoURI = FileProvider.getUriForFile(this,
-                    "com.example.blogapp.fileprovider",
+                    getApplicationContext().getPackageName() + ".fileprovider",
                     photoFile);
             Log.d(TAG, "PhotoURI: " + photoURI);
             takePictureIntent.putExtra(MediaStore.EXTRA_OUTPUT, photoURI);
@@ -294,31 +315,173 @@ public class CreateBlogActivity extends AppCompatActivity {
             return;
         }
 
-        // Create a new blog post
-        BlogPost newPost = new BlogPost(
-                title,
-                content,
-                selectedImageUri.toString(),
-                currentLocation
-        );
+        // Show loading state
+        binding.btnPost.setEnabled(false);
+        binding.btnPost.setText("Processing image...");
 
-        // Send the blog post data back to MainActivity
-        Intent resultIntent = new Intent();
-        resultIntent.putExtra("title", newPost.getTitle());
-        resultIntent.putExtra("content", newPost.getContent());
-        resultIntent.putExtra("imageUrl", newPost.getImageUrl());
-        resultIntent.putExtra("location", newPost.getLocationName());
-        resultIntent.putExtra("timestamp", newPost.getTimestamp());
-        
-        setResult(Activity.RESULT_OK, resultIntent);
-        Toast.makeText(this, "Post created successfully!", Toast.LENGTH_SHORT).show();
-        finish();
+        // Get current user ID
+        String userId = FirebaseAuth.getInstance().getCurrentUser() != null ? 
+                       FirebaseAuth.getInstance().getCurrentUser().getUid() : null;
+
+        if (userId == null) {
+            Toast.makeText(this, "Error: Not logged in", Toast.LENGTH_SHORT).show();
+            binding.btnPost.setEnabled(true);
+            binding.btnPost.setText("Post");
+            return;
+        }
+
+        // Run image processing in background thread
+        new Thread(() -> {
+            try {
+                // Convert image to Base64
+                String base64Image = convertImageToBase64(selectedImageUri);
+                if (base64Image == null) {
+                    runOnUiThread(() -> {
+                        Toast.makeText(this, "Error processing image", Toast.LENGTH_SHORT).show();
+                        binding.btnPost.setEnabled(true);
+                        binding.btnPost.setText("Post");
+                    });
+                    return;
+                }
+
+                // Create a new blog post with the Base64 image
+                BlogPost newPost = new BlogPost(
+                    title,
+                    content,
+                    base64Image,
+                    currentLocation,
+                    userId,
+                    System.currentTimeMillis()
+                );
+
+                // Save to Firebase Database on main thread
+                runOnUiThread(() -> {
+                    FirebaseDatabase database = FirebaseDatabase.getInstance();
+                    DatabaseReference postsRef = database.getReference("posts");
+                    String postId = postsRef.push().getKey();
+
+                    if (postId == null) {
+                        Toast.makeText(this, "Error creating post ID", Toast.LENGTH_SHORT).show();
+                        binding.btnPost.setEnabled(true);
+                        binding.btnPost.setText("Post");
+                        return;
+                    }
+
+                    postsRef.child(postId).setValue(newPost)
+                        .addOnSuccessListener(aVoid -> {
+                            Log.d(TAG, "Post saved successfully with ID: " + postId);
+                            Toast.makeText(CreateBlogActivity.this, "Post created successfully!", Toast.LENGTH_SHORT).show();
+                            Intent resultIntent = new Intent();
+                            resultIntent.putExtra("postId", postId);
+                            setResult(Activity.RESULT_OK, resultIntent);
+                            finish();
+                        })
+                        .addOnFailureListener(e -> {
+                            Log.e(TAG, "Error saving post: " + e.getMessage());
+                            Toast.makeText(CreateBlogActivity.this, "Error creating post: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                            binding.btnPost.setEnabled(true);
+                            binding.btnPost.setText("Post");
+                        });
+                });
+            } catch (Exception e) {
+                Log.e(TAG, "Error in post creation: " + e.getMessage());
+                e.printStackTrace();
+                runOnUiThread(() -> {
+                    Toast.makeText(this, "Error creating post: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                    binding.btnPost.setEnabled(true);
+                    binding.btnPost.setText("Post");
+                });
+            }
+        }).start();
+    }
+
+    private String convertImageToBase64(Uri imageUri) {
+        try {
+            Log.d(TAG, "Converting image to Base64: " + imageUri);
+            
+            // Get input stream from URI
+            InputStream inputStream;
+            if (imageUri.getScheme() != null && imageUri.getScheme().equals("file")) {
+                String filePath = imageUri.getPath();
+                if (filePath == null) {
+                    Log.e(TAG, "File path is null");
+                    return null;
+                }
+                File imageFile = new File(filePath);
+                inputStream = new FileInputStream(imageFile);
+            } else {
+                inputStream = getContentResolver().openInputStream(imageUri);
+            }
+            
+            if (inputStream == null) {
+                Log.e(TAG, "Failed to open input stream from URI: " + imageUri);
+                return null;
+            }
+
+            // Read the entire input stream into a byte array
+            ByteArrayOutputStream byteBuffer = new ByteArrayOutputStream();
+            byte[] buffer = new byte[4096];
+            int bytesRead;
+            while ((bytesRead = inputStream.read(buffer)) != -1) {
+                byteBuffer.write(buffer, 0, bytesRead);
+            }
+            byte[] imageBytes = byteBuffer.toByteArray();
+            byteBuffer.close();
+            inputStream.close();
+
+            // Decode the image bytes into a bitmap
+            BitmapFactory.Options options = new BitmapFactory.Options();
+            options.inSampleSize = 2; // Reduce image size by factor of 2
+            Bitmap originalBitmap = BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.length, options);
+
+            if (originalBitmap == null) {
+                Log.e(TAG, "Failed to decode bitmap from bytes");
+                return null;
+            }
+
+            // Compress the bitmap
+            int maxSize = 800;
+            float ratio = Math.min((float) maxSize / originalBitmap.getWidth(), 
+                                 (float) maxSize / originalBitmap.getHeight());
+            int width = Math.round(ratio * originalBitmap.getWidth());
+            int height = Math.round(ratio * originalBitmap.getHeight());
+            
+            Bitmap compressedBitmap = Bitmap.createScaledBitmap(originalBitmap, width, height, true);
+            originalBitmap.recycle();
+            
+            // Convert compressed bitmap to Base64
+            ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+            compressedBitmap.compress(Bitmap.CompressFormat.JPEG, 50, outputStream);
+            byte[] byteArray = outputStream.toByteArray();
+            compressedBitmap.recycle();
+            outputStream.close();
+            
+            // Add prefix to indicate this is a Base64 JPEG image
+            String base64String = "data:image/jpeg;base64," + Base64.encodeToString(byteArray, Base64.NO_WRAP);
+            
+            // Clean up temporary camera file if it exists
+            if (currentPhotoPath != null) {
+                File photoFile = new File(currentPhotoPath);
+                if (photoFile.exists()) {
+                    photoFile.delete();
+                }
+                currentPhotoPath = null;
+            }
+            
+            Log.d(TAG, "Successfully converted image to Base64");
+            return base64String;
+        } catch (Exception e) {
+            Log.e(TAG, "Error converting image to Base64: " + e.getMessage());
+            e.printStackTrace();
+            return null;
+        }
     }
 
     private File createImageFile() throws IOException {
+        // Create an image file name
         String timeStamp = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(new Date());
         String imageFileName = "JPEG_" + timeStamp + "_";
-        File storageDir = getExternalFilesDir(null);
+        File storageDir = getExternalFilesDir(android.os.Environment.DIRECTORY_PICTURES);
         File image = File.createTempFile(
                 imageFileName,  /* prefix */
                 ".jpg",        /* suffix */
