@@ -1,6 +1,11 @@
 package com.example.blogapp;
 
+import android.content.ClipData;
+import android.content.ClipboardManager;
+import android.content.Context;
+import android.content.DialogInterface;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.os.Bundle;
 import android.os.Handler;
 import android.util.Log;
@@ -11,16 +16,18 @@ import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.ActionBarDrawerToggle;
+import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.view.GravityCompat;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
-import com.example.blogapp.adapters.PostAdapter;
 import com.example.blogapp.adapters.BlogAdapter;
 import com.example.blogapp.adapters.ImageCarouselAdapter;
+import com.example.blogapp.adapters.PostAdapter;
 import com.example.blogapp.databinding.ActivityMainBinding;
 import com.example.blogapp.models.BlogPost;
 import com.example.blogapp.models.Post;
+import com.example.blogapp.utils.NotificationHelper;
 import com.google.android.material.navigation.NavigationView;
 import com.google.android.material.tabs.TabLayoutMediator;
 import com.google.firebase.auth.FirebaseAuth;
@@ -32,6 +39,7 @@ import com.google.firebase.database.FirebaseDatabase;
 import com.google.firebase.database.ValueEventListener;
 import com.google.firebase.firestore.FirebaseFirestore;
 import com.google.firebase.firestore.QueryDocumentSnapshot;
+import com.google.firebase.messaging.FirebaseMessaging;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -55,7 +63,7 @@ public class MainActivity extends AppCompatActivity
             new ActivityResultContracts.StartActivityForResult(),
             result -> {
                 if (result.getResultCode() == RESULT_OK) {
-                    Toast.makeText(this, "Post created successfully!", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(this, "Report created successfully!", Toast.LENGTH_SHORT).show();
                 }
             });
 
@@ -78,6 +86,9 @@ public class MainActivity extends AppCompatActivity
             blogAdapter = new BlogAdapter(blogPosts);
             binding.recyclerView.setLayoutManager(new LinearLayoutManager(this));
             binding.recyclerView.setAdapter(blogAdapter);
+
+            // Start listening for notifications
+            NotificationHelper.listenForNotifications(this);
 
             // Setup Navigation Drawer
             setSupportActionBar(binding.toolbar);
@@ -104,6 +115,36 @@ public class MainActivity extends AppCompatActivity
                 startActivity(new Intent(this, LoginActivity.class));
                 finish();
                 return;
+            }
+
+            // Get FCM token
+            FirebaseMessaging.getInstance().getToken()
+                .addOnCompleteListener(task -> {
+                    if (task.isSuccessful() && task.getResult() != null) {
+                        String token = task.getResult();
+                        Log.d("FCM_TOKEN", "Token: " + token);
+                        // Display token in a dialog for easy copying
+                        new AlertDialog.Builder(this)
+                            .setTitle("FCM Token")
+                            .setMessage(token)
+                            .setPositiveButton("Copy", (dialog, which) -> {
+                                ClipboardManager clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+                                ClipData clip = ClipData.newPlainText("FCM Token", token);
+                                clipboard.setPrimaryClip(clip);
+                                Toast.makeText(this, "Token copied to clipboard", Toast.LENGTH_SHORT).show();
+                            })
+                            .setNegativeButton("Close", null)
+                            .show();
+                    } else {
+                        Log.e("FCM_TOKEN", "Failed to get token", task.getException());
+                    }
+                });
+
+            // Request notification permission for Android 13+
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                    requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS}, 100);
+                }
             }
 
             // Load posts
@@ -271,5 +312,20 @@ public class MainActivity extends AppCompatActivity
         Intent intent = new Intent(this, ViewPostActivity.class);
         intent.putExtra("postId", post.getPostId());
         startActivity(intent);
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == 100) {
+            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                Log.d("MainActivity", "Notification permission granted");
+                // Start listening for notifications
+                NotificationHelper.listenForNotifications(this);
+            } else {
+                Log.d("MainActivity", "Notification permission denied");
+                Toast.makeText(this, "Notifications are disabled. You may miss updates about new posts.", Toast.LENGTH_LONG).show();
+            }
+        }
     }
 }

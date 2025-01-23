@@ -25,12 +25,14 @@ import androidx.core.content.FileProvider;
 import com.bumptech.glide.Glide;
 import com.example.blogapp.databinding.ActivityCreateBlogBinding;
 import com.example.blogapp.models.BlogPost;
+import com.example.blogapp.utils.NotificationHelper;
 import com.google.android.gms.location.FusedLocationProviderClient;
 import com.google.android.gms.location.LocationServices;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.database.DatabaseReference;
 import com.google.firebase.database.FirebaseDatabase;
+import com.google.firebase.database.ServerValue;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
@@ -38,11 +40,13 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.text.SimpleDateFormat;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 public class CreateBlogActivity extends AppCompatActivity {
-    private static final String TAG = "CreateDistarReport";
+    private static final String TAG = "CreateDisatarReport";
     private static final int PERMISSION_REQUEST_CAMERA = 100;
     private static final int PERMISSION_REQUEST_LOCATION = 101;
     
@@ -370,11 +374,35 @@ public class CreateBlogActivity extends AppCompatActivity {
                     postsRef.child(postId).setValue(newPost)
                         .addOnSuccessListener(aVoid -> {
                             Log.d(TAG, "Post saved successfully with ID: " + postId);
-                            Toast.makeText(CreateBlogActivity.this, "Post created successfully!", Toast.LENGTH_SHORT).show();
-                            Intent resultIntent = new Intent();
-                            resultIntent.putExtra("postId", postId);
-                            setResult(Activity.RESULT_OK, resultIntent);
-                            finish();
+                            
+                            // Create notification data in Realtime Database
+                            DatabaseReference notificationsRef = database.getReference("notifications").push();
+                            
+                            Map<String, Object> notificationData = new HashMap<>();
+                            notificationData.put("title", "New Blog Post");
+                            notificationData.put("message", title + " - " + (currentLocation.isEmpty() ? "No location" : currentLocation));
+                            notificationData.put("postId", postId);
+                            notificationData.put("timestamp", ServerValue.TIMESTAMP);
+                            
+                            // Save notification to trigger FCM
+                            notificationsRef.setValue(notificationData)
+                                .addOnSuccessListener(v -> {
+                                    Log.d(TAG, "Notification data saved successfully");
+                                    Toast.makeText(CreateBlogActivity.this, "Post created successfully!", Toast.LENGTH_SHORT).show();
+                                    
+                                    Intent resultIntent = new Intent();
+                                    resultIntent.putExtra("postId", postId);
+                                    setResult(Activity.RESULT_OK, resultIntent);
+                                    finish();
+                                })
+                                .addOnFailureListener(e -> {
+                                    Log.e(TAG, "Failed to save notification data", e);
+                                    Toast.makeText(CreateBlogActivity.this, "Post created but notification failed!", Toast.LENGTH_SHORT).show();
+                                    Intent resultIntent = new Intent();
+                                    resultIntent.putExtra("postId", postId);
+                                    setResult(Activity.RESULT_OK, resultIntent);
+                                    finish();
+                                });
                         })
                         .addOnFailureListener(e -> {
                             Log.e(TAG, "Error saving post: " + e.getMessage());
